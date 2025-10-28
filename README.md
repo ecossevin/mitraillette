@@ -39,7 +39,10 @@ files are used to run the test case.
 must exists in protojobs/\[STATION\].
   2) choose the  PRO_FILE that you want to use, and edit it keeping the experiments
 you want to run. Then update the path to the path to your executable.
-  3) for example run ./mitraillette.x CY50T1 PRO_FILE.CY50T1
+  3) create a directory for the cycle on which you are running the tests, for example 
+create cy50t1 dir if you are running PRO_FILE.CY50T1.
+  4) export MIT_INSTALL_DIR to where you have downloaded this repository
+  5) for example run ./mitraillette.x CY50T1 PRO_FILE.CY50T1
 
 ***Requirements***
 ------------------
