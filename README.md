@@ -1,6 +1,6 @@
 
 
-![](ChatGPT_Image_29_oct._2025__21_28_08.mitr.png)
+![](images/ChatGPT_Image_29_oct._2025__21_28_08.mitr.png)
 
 
 
