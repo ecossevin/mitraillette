@@ -15,6 +15,7 @@ mitpack
   $ mitpack --status                           #  Show a small report on all tasks
   $ mitpack --status --reference /path/to/ref  #  Show a small report on all tasks, compare with a reference
   $ mitpack --cancel                           #  Cancel already submitted tasks
+  $ mitpack --maxtime                          #  Submit jobs per groups of jobs, maxtime is the maximumu time of the group of jobs.
 
 =head1 DESCRIPTION
 
