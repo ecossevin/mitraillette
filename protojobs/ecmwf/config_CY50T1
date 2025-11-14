@@ -1,5 +1,5 @@
 #
-# Mitraillette configuration file for BELENOS (V122019)
+# Mitraillette configuration file for ecmwf cluster
 #
 
 #unchained jobs or not?
@@ -69,7 +69,20 @@ LFIMV="$IO_SERV_TOOLS_DIR/lfi_move -pack -force"
 
 # Batch and MPI launch definitions
 SUBMIT=/usr/local/bin/sbatch
-MPILAUNCH="time /home/sor/install/mpiauto/mpiauto --verbose --wrap-stdeo --wrap -np $MPI_TASKS -nnp $MPITASKS_PER_NODE --"
+function mpilaunch 
+{
+  bin=$(dirname $1)
+  prefix=$(dirname $bin)
+
+  if [ -f "$prefix/mitpack.sh" ]
+  then
+    source "$prefix/mitpack.sh"
+  fi
+
+#  time /home/sor/install/mpiauto/mpiauto --verbose --wrap-stdeo --wrap -np $MPI_TASKS -nnp $MPITASKS_PER_NODE --
+  time /home/sor/install/mpiauto/mpiauto --verbose --wrap-stdeo --wrap --nn $NNODE -nnp $NTASK -openmp $NOPMP -- $*
+
+}
 
 # xpnam
 XPNAM=/perm/soa1/xpnam/bin/xpnam
