@@ -216,16 +216,14 @@ sub aggregate
   
       for my $job (@{ $j{$sign} })
         {
-          $time += $job->{'time'};
-  
-          if ($time > $max)
+          if ($time + $job->{'time'} > $max)
             {
               $dump->();
             }
-          else
-            {
-              push @job, $job;
-            }
+
+          $time += $job->{'time'};
+  
+          push @job, $job;
         }
 
       $dump->();
