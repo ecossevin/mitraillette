@@ -278,16 +278,32 @@ COMMENT=$3
   NBTHREADS=`echo $job_nthreads | awk '{printf("%d",$0)}'`
   NTASKS=$(( $NTASKS_TOT - $NPROC_IO ))                       # matches with namelist variable "NPROC"
   NTASKS_BY_NODE=$(( $NTASKS_TOT / $NBNODES ))                       # for the header job
-  cat $MULTIHEADER $REF_JOBSDIR/$HOST/config_${CYCLE} $JOB $JOBTRAILER | \
-  sed  -e "s/__jobname__/O${CODE_NAME}/" \
-       -e "s/__ntasks_tot__/${NTASKS_TOT}/g" -e "s/__ntasks__/${NTASKS}/" -e "s/__nb_proc_io__/${NPROC_IO}/" \
-       -e "s/__nb_nodes__/${NBNODES}/" -e "s/__ntasks_by_node__/${NTASKS_BY_NODE}/" \
-       -e "s/__nb_threads__/${NBTHREADS}/" \
-       -e "s/__job_maxmem__/${job_maxmem}/" -e "s/__job_walltime__/${job_walltime}/" -e "s/__job_cputime__/${job_cputime}/" \
-       -e "s/__v_cycle__/${CYCLE}/" -e "s/__my_own_bin__/${UL_MOWN}/" \
-       -e "s/__nam_path__/${nam_path}/" -e "s/__mitra_pid__/${MITRA_PID}/g" -e "s/__mitra_home__/${mitra_home}/" \
-       -e "s/__mit_unchained_job__/${MIT_UNCHAINED_JOB}/" \
-       > ${JOB_DIR}/${CODE_NAME}.cjob
+
+  cat $MULTIHEADER > ${JOB_DIR}/${CODE_NAME}.cjob
+  echo "export STATION=$STATION" >> ${JOB_DIR}/${CODE_NAME}.cjob
+  cat $REF_JOBSDIR/$HOST/config_${CYCLE} >> ${JOB_DIR}/${CODE_NAME}.cjob
+  cat $JOB >> ${JOB_DIR}/${CODE_NAME}.cjob
+  cat $JOBTRAILER >> ${JOB_DIR}/${CODE_NAME}.cjob
+
+  perl -i -pe "
+      s/__jobname__/O${CODE_NAME}/go; 
+      s/__ntasks_tot__/${NTASKS_TOT}/go;  
+      s/__ntasks__/${NTASKS}/go; \ 
+      s/__nb_proc_io__/${NPROC_IO}/go; 
+      s/__nb_nodes__/${NBNODES}/go; 
+      s/__ntasks_by_node__/${NTASKS_BY_NODE}/go; 
+      s/__nb_threads__/${NBTHREADS}/go; 
+      s/__job_maxmem__/${job_maxmem}/go; 
+      s/__job_walltime__/${job_walltime}/go;  
+      s/__job_cputime__/${job_cputime}/go; 
+      s/__v_cycle__/${CYCLE}/go; 
+      s/__my_own_bin__/${UL_MOWN}/go; 
+      s/__nam_path__/${nam_path}/go;  
+      s/__mitra_pid__/${MITRA_PID}/go;  
+      s/__mitra_home__/${mitra_home}/go; 
+      s/__mit_unchained_job__/${MIT_UNCHAINED_JOB}/go; 
+  " ${JOB_DIR}/${CODE_NAME}.cjob
+
   ln -s ${JOB_DIR}/${CODE_NAME}.cjob ${JOB_DIR}/chainjob_$seqn
   echo "$seqn : ${COMMENT} :  ${CODE_NAME} " >> $LOG_FILE
   seqn=$(( $seqn + 1 ))
