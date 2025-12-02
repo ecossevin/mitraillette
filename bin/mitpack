@@ -142,6 +142,7 @@ sub header
     {
       s/\s*$//o;
       next if (m/^--job-name=/o);
+      next if (m/^-J/o);
 
       if (m/^(--\S+)=(.*)$/o)
         {
@@ -153,7 +154,7 @@ sub header
         }
       elsif (m/^(-\S+)$/o)
         {
-          $h{$1} = 1;
+          $h{$1} = '__FLAG__';
         }
     }  
 
@@ -169,6 +170,7 @@ sub header
 sub aggregate
 {
   my $max = shift; # Max time in minutes
+
   my @cjob = @_;
 
   return @cjob unless ($max > 0);
@@ -197,7 +199,7 @@ sub aggregate
   for my $sign (sort { $h{$b}{'--nodes'} <=> $h{$a}{'--nodes'} } keys (%j))
     {
       my $h = $h{$sign};
-  
+
       my $time = 0;
   
       my @job;
@@ -214,7 +216,16 @@ sub aggregate
 
         for my $attr (sort keys (%$h))
           {
-            $fh->print ("#SBATCH $attr $h->{$attr}\n");
+            if ($attr eq '-J') { }
+            if ($attr eq '--job-name') { }
+            elsif ($h->{$attr} eq '__FLAG__')
+              {
+                $fh->print ("#SBATCH $attr\n");
+              }
+            else
+              {
+                $fh->print ("#SBATCH $attr $h->{$attr}\n");
+              }
           }
         $fh->print ("#SBATCH --time $time\n");
         $fh->print ("#SBATCH -o /dev/null\n");
@@ -236,6 +247,7 @@ sub aggregate
   
       for my $job (@{ $j{$sign} })
         {
+
           if ($time + $job->{'time'} > $max)
             {
               $dump->();
@@ -244,6 +256,7 @@ sub aggregate
           $time += $job->{'time'};
   
           push @job, $job;
+
         }
 
       $dump->();
