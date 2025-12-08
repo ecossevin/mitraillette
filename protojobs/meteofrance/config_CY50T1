@@ -13,13 +13,30 @@ WORKDIR=/scratch/work/${USER}
 
 # Where to put your modified job* files, i.e. the chain-files
 # MITRA_HOME is defined in mitraillette.x as your pwd
-TMP_LOC=$TMPDIR
 
+if [ "x$STARTTIME" != "x" ]
+then
+TMP_LOC=$TMPDIR/tmp/mitraille.${SLURM_JOBID}.${STARTTIME}
+else
+TMP_LOC=$TMPDIR/tmp/mitraille.${SLURM_JOBID}
+fi
+mkdir -p $TMP_LOC
 # Location of input data: cycle independent data
 # FILE_PATH_DBASE.. for databases to use conf 923.
 # FILE_PATH for other files.
+
+if [ "$STATION" = "belenos" ]
+then
 KYHOME=/scratch/work/saez
 KYWORKDIR=/scratch/work/saez
+elif [ "$STATION" = "taranis" ]
+then
+KYHOME=/scratch/work/marguina/saez
+KYWORKDIR=/scratch/work/marguina/saez
+else
+exit 1
+fi
+
 AMHOME=/home/gmap/mrpe/mary
 AMWORKDIR=/scratch/work/mary
 GCOHOME=/home/mf/dp/marp/gco
@@ -123,7 +140,6 @@ export DR_HOOK_OPT=prof
 export MPL_MBX_SIZE=2048000000
 export LFITOOLS=$EXEC_IFSAUX_LFITOOLS
 export KMP_AFFINITY="compact,granularity=fine"
-#export KMP_AFFINITY="compact,granularity=fine"
 export KMP_BLOCKTIME=12
 export OMP_WAIT_POLICY=ACTIVE
 
