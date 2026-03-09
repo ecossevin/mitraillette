@@ -443,7 +443,9 @@ sub getVersion
 package node;
 
 use strict;
+
 use FileHandle;
+use Data::Dumper;
 
 my @spnorms = ("VORTICITY", "DIVERGENCE", "TEMPERATURE", "KINETIC ENERGY");
 
@@ -467,10 +469,13 @@ sub xave
 #                                    AVERAGE               MINIMUM               MAXIMUM
 #  PROFTEMPERATURE  : 0.291195674511515E+03 0.201887381812149E+03 0.315847778487033E+03
 
-      if ($line =~ s/^\s*SPECTRAL\s+NORMS\s+-\s+//o)
+      if ($line =~ s/^\s*SPECTRAL\s+NORMS\s+-\s+LOG\(PREHYDS\)\s+(\S+)//o)
         {
-          AGAIN_SPNORMS:
+          my $LOG_PREHYDS = $1;
 
+          push @x, [LOG_PREHYDS => $LOG_PREHYDS];
+
+          AGAIN_SPNORMS:
 
           goto AGAIN
             unless (($line = shift (@line)) =~ s/^\s+LEV\s+//o);
@@ -510,17 +515,38 @@ sub xave
   return @x;
 }
 
+my $INF = 999**999;
+
+sub digitdiff
+{
+  my ($x1, $x2) = @_;
+  return $INF if ($x1 == $x2);
+  return - log (abs ($x1 - $x2)) / log (10);
+}
+
+my @find = qw (TEMPERATURE VORTICITY DIVERGENCE);
+
+sub fields
+{
+  return @find;
+}
 
 sub diff
 {
-  my ($f1, $f2, $fh) = @_;
-  
+  my ($f1, $f2) = @_;
+
   my @fx1 = &xave ($f1);
   my @fx2 = &xave ($f2);
-  
+
   my @x = ([]);
   
   my $diff = 0;
+
+  my %mind; # Minimum number of common digits
+  for (@find)
+    {
+      $mind{$_} = $INF;
+    }
   
   while (defined (my $fx1 = shift (@fx1)) && defined (my $fx2 = shift (@fx2)))
     {
@@ -531,6 +557,7 @@ sub diff
         unless ($f1 eq $f2);
   
       chomp ($x1); chomp ($x2);
+
       if (($x1 !~ m/^\s*$/o) && ($x2 !~ m/^\s*$/o))
         {
           for ($x1, $x2)
@@ -547,23 +574,184 @@ sub diff
             sprintf (" | %-20s | %17.9e  |  %17.9e  |  %17s  | \n", $f1, $x1, $x2, $sdx);
   
           $diff++ if ($dx);
-  
+
+          my $dd = &digitdiff ($x1, $x2);
+
+          if ($mind{$f1})
+            {
+              $mind{$f1} = $dd if ($dd < $mind{$f1});
+            }
         }
       else
         {
           push @x, [];
         }
     }
-  
-  for (my $i = 0; $i <= $#x; $i++)
-    {
-      last unless (@{$x[$i]});
-      $fh && $fh->print (@{$x[$i]});
-    }
 
-  return $diff;
+  my @mind = map { sprintf ('%5.2f', $mind{$_}) } @find;
+
+  return $diff ? (@mind) : ();
 }
 
+package printer;
+
+use strict;
+
+sub new
+{
+  my $class = shift;
+  my $self = bless {count => 0, @_}, $class;
+  
+  $self->{fhout} ||= \*STDOUT;
+
+  unless (-t $self->{fhout})
+    {
+      $self->{color} = 0;
+    }
+
+  return $self;
+}
+
+sub center
+{
+  my ($s, $n) = @_; 
+  my $i = 0;
+  while (length ($s) < $n) 
+    {   
+      $s = $i % 2 ? " $s" : "$s ";
+      $i++;
+    }   
+  return $s; 
+}
+
+sub colored
+{
+  my ($self, $color, $text) = @_;
+  return $text;
+}
+
+sub separator
+{
+  return "   ";
+}
+
+sub line
+{
+  my $self = shift;
+
+  my @len = @{ $self->{length} };
+  my @jus = @{ $self->{justify} };
+
+  my $col = 0;
+
+  my $line = '';
+
+  my $separator = $self->separator ();
+
+  for (my $i = 0; $i <= $#_; $i++)
+    {
+      $line .= $separator;
+
+      my $color = '';
+      if ($_[$i] =~ m{^<(.*)>$}goms)
+        {
+          $color = $1;
+          $i++;
+        }
+      my $str = $_[$i];
+
+      my ($jus, $len) = ($jus[$col], $len[$col]);
+
+      if ($jus && $len)
+        {
+          if ($jus eq 'center')
+            {
+              $str = &center ($str, $len);
+            }
+          elsif ($jus eq 'left')
+            {
+              $str = sprintf ("%-${len}.${len}s", $str);
+            }
+          elsif ($jus eq 'right')
+            {
+              $str = sprintf ("%${len}.${len}s", $str);
+            }
+        }
+      elsif ($len)
+        {
+          $str = sprintf ("%-${len}.${len}s", $str);
+        }
+
+      if ($color && $self->{color})
+        {
+          $line .= $self->colored ([$color], $str);
+        }
+      else
+        {
+          $line .= $str;
+        }
+
+      $col++;
+    }
+
+  while ($col <= $#len)
+    {
+      $line .= $separator;
+      $line .= ' ' x $len[$col];
+      $col++;
+    }
+
+  $line .= $separator;
+
+  if ($self->interval () && (($self->{count} % $self->interval ()) == 0))
+    {
+      $line =~ s/ /./go;
+    }
+
+  $self->{fhout}->print ("$line\n");
+
+  $self->{count}++;
+}
+
+package printer::terminal;
+
+use strict;
+
+our @ISA = qw (printer);
+
+sub colored
+{
+  use Term::ANSIColor qw ();
+  my $self = shift;
+  return &Term::ANSIColor::colored (@_);
+}
+
+sub separator
+{
+  return " | ";
+}
+
+sub interval
+{
+  my $self = shift;
+  return $self->{interval};
+}
+
+package printer::csv;
+
+use strict;
+
+our @ISA = qw (printer);
+
+sub separator
+{
+  return " ; ";
+}
+
+sub interval
+{
+  0;
+}
 
 package main;
 
@@ -892,7 +1080,7 @@ EOF
   return {status => $status, CNMEXPL => $CNMEXPL};
 }
 
-sub colorStatus
+sub getColorStatus
 {
   my $text = shift;
   (my $status = $text) =~ s/(?:^\s*|\s*$)//go;
@@ -914,7 +1102,19 @@ sub colorStatus
     signalled         => 'black on_red',
   );
 
-  if ((-t STDOUT) && (my $color = $color{$status}))
+  return $color{$status};
+}
+
+sub colorStatus
+{
+  my $text = shift;
+  &colorMessage (&getColorStatus ($text), $text);
+}
+
+sub colorMessage
+{
+  my ($color, $text) = @_;
+  if ((-t STDOUT) && $color)
     {
       return &colored ([$color], $text);
     }
@@ -942,30 +1142,24 @@ sub listTestCases
 
 }
 
-sub showStatus
+sub getReferenceMitraillette
 {
   my %args = @_;
 
-  (my $build = $args{build}) or die;
+  return unless (my $reference = $args{reference});
 
-  my ($mitraillette, $reference) = @args{qw (mitraillette reference)};
-
-  my ($build1, $mitraillette1);
+  my $mitraillette1;
 
   if ($reference)
     {
-      if ($build1 = 'build'->new (path => $reference))
+      if (my $build1 = 'build'->new (path => $reference))
         {
-          ($mitraillette1) = &getLastMitraillette (build => $reference);
+          ($mitraillette1) = &getLastMitraillette (build => $build1);
           $mitraillette1 or die;
         }
       elsif (my ($cjob) = <$reference/*.cjob>)
         {
           $mitraillette1 = $reference;
-          my ($text) = &slurp ($cjob);
-         
-          $build1 = 'build'->new (path => "$reference/..");
-
         }
       else
         {
@@ -973,92 +1167,191 @@ sub showStatus
         }
     }
 
-  $mitraillette or die;
-  chdir ($mitraillette) or die;
+  return $mitraillette1;
+}
 
-  my %o1 = $mitraillette1 ? map 
+sub getStatusOutputs
+{
+  my $mitraillette = shift;
+
+  my %o = $mitraillette ? map 
   { 
     my $o = $_;  
     $_ = &basename ($_);
     s/\.o\d+$//o;
     ($_, $o) 
-  } <$mitraillette1/*.o*> : ();
+  } <$mitraillette/*.o*> : ();
 
-  my ($log, $fhlog);
+  return %o;
+}
 
-  if ($build1)
-    {
-      $log = $build->getPath () . '/diff.' . &basename ($mitraillette) . '-' . &basename ($mitraillette1) . ".txt";
-      $fhlog = 'FileHandle'->new (">$log");
-    }
-  
+sub showStatus
+{
+  my %args = @_;
+
+  (my $build = $args{build}) or die;
+
+  my $mitraillette0 = $args{mitraillette};
+
+  my $mitraillette1 = &getReferenceMitraillette (%args, reference => $args{reference1});
+  my $mitraillette2 = &getReferenceMitraillette (%args, reference => $args{reference2});
+
+  $mitraillette0 or die;
+
+  my %o0 = &getStatusOutputs ($mitraillette0);
+  my %o1 = &getStatusOutputs ($mitraillette1);
+  my %o2 = &getStatusOutputs ($mitraillette2);
+
   my $len = 0;
-  for my $o (sort <*.o*>)
+  for my $o (sort keys (%o0))
     {
       $len = length ($o) > $len ? length ($o) : $len;
     }
 
-  printf ("RUN = %s\n", $mitraillette);
-  printf ("REF = %s\n", $mitraillette1) if ($mitraillette1);
+  my @R = ('RUN');
 
-  printf ("| %-${len}s | %20s", '',  &center ('RUN', 20));
-  printf (" | %20s | %s", &center ('REF', 20), '') if ($mitraillette1);
-  print "\n";
-
-  my @o = sort <*.o*>;
-
-  MAIN : for my $i (0 .. $#o)
+  if ($mitraillette1 && $mitraillette2)
     {
-      my $o = $o[$i];
+      push @R, 'REF1', 'REF2';
+    }
+  elsif ($mitraillette1)
+    {
+      push @R, 'REF';
+    }
 
-      my $edit = 0;
+  printf ("%-6s = %s\n", $R[0], $mitraillette0);
+  printf ("%-6s = %s\n", $R[1], $mitraillette1) if ($mitraillette1);
+  printf ("%-6s = %s\n", $R[2], $mitraillette2) if ($mitraillette2);
 
-      next unless (my $info = &jobInfo ($o));
+  my @length = ($len);
+  my @justify = ('left');
+  
+  for my $R (@R)
+    {
+      push @length, 20;
+      push @justify, 'center';
+    }
 
-      my $line = sprintf ("| %-${len}s | %20s", $info->{CNMEXPL}, &colorStatus (&center ($info->{status}, 20)));
+  if ($mitraillette1 && $mitraillette2)
+    {
+      # STATUS
+      push @length, 10;
+      push @justify, 'center';
+      my @F = 'node'->fields ();
+      push @length, (11) x scalar (@F);
+      push @justify, ('center') x scalar (@F);
+    }
 
-      my $o1;
+  my $printer = 'printer::terminal'->new 
+  (
+    color => 1, justify => \@justify, 
+    length => \@length, interval => 5,
+  );
 
-      if ($mitraillette1)
+
+  my @head = ('TEST CASE');
+
+  for my $R (@R)
+    {
+      push @head, $R;
+    }
+
+  if ($mitraillette1 && $mitraillette2)
+    {
+      push @head, 'STATUS';
+      my @F = 'node'->fields ();
+      for my $F (@F)
         {
-          (my $O = $o) =~ s/\.o\d+$//o;
-          $o1 = $o1{$O};
+          push @head, $F;
+        }
+    }
 
-          if ($o1)
+  $printer->line (@head);
+
+  my @O = sort keys (%o0);
+
+  MAIN : for my $i (0 .. $#O)
+    {
+      my @line;
+
+      my $O = $O[$i];
+      my $o0 = $o0{$O};
+      my $o1 = $o1{$O};
+      my $o2 = $o2{$O};
+
+      my $info0 = $o0 && &jobInfo ($o0);
+      my $info1 = $o1 && &jobInfo ($o1);
+      my $info2 = $o2 && &jobInfo ($o2);
+
+      push @line, $O;
+
+      my $txtmess = '';
+      my $colmess = '';
+
+      my @info = ($info0);
+      push @info, $info1 if ($mitraillette1);
+      push @info, $info2 if ($mitraillette2);
+
+      for my $info (@info)
+        {
+          push @line, $info ? ('<' . &getColorStatus ($info->{status}) . '>', $info->{status}) : ('');
+        }
+
+      if ($o1 && $o2 && ! grep ({ $_->{status} ne 'COMPLETED' } ($info0, $info1, $info2)))
+        {
+          my @txtmess;
+
+          my @diff01 = &node::diff ($o0, $o1);
+          my @diff21 = &node::diff ($o2, $o1);
+
+          if (@diff01 && @diff21)
             {
-              my $info1 = &jobInfo ($o1);
-
-              if ($args{'only-completed'})
+              for my $i (0 .. $#diff01)
                 {
-                  next unless ($info1->{status} eq 'COMPLETED');
+                  push @txtmess, "$diff01[$i] $diff21[$i]";
+                  $colmess = 'red on_black' if ($diff01[$i] < $diff21[$i]);
                 }
-             
-              $fhlog && $fhlog->print ("$info->{CNMEXPL}\n\n");
+            }
+          elsif (@diff01)
+            {
+              for my $i (0 .. $#diff01)
+                {
+                  push @txtmess, "$diff01[$i]   inf";
+                  $colmess = 'red on_black';
+                }
+            }
+          
+          $txtmess = "DIFF[" . join ("|", @txtmess) . "]" if (@txtmess);
 
-              my $diff = &node::diff ($o, $o1, $fhlog);
+          if (@txtmess)
+            {
+              push @line, "<$colmess>", 'DIFF', map { ("<$colmess>", $_) } @txtmess;
+            }
 
-              $line .= sprintf (" | %20s | %s", &colorStatus (&center ($info1->{status}, 20)), (! &statusEquiv ($info->{status}, $info1->{status})) || $diff ? 'DIFF' : '');
+        }
+      elsif ($o1 && ! grep ({ $_->{status} ne 'COMPLETED' } ($info0, $info1)))
+        {
+          my @diff01 = &node::diff ($o0, $o1);
+          if (@diff01)
+            {
+              $txtmess = 'DIFF';
+              $colmess = 'red on_black';
+            }
 
-              $edit = $diff || ($info->{status} ne $info1->{status});
-
-              $fhlog && $fhlog->print ("\n\n");
+          if ($txtmess)
+            {
+              push @line, "<$colmess>", $txtmess;
             }
         }
-
-      $line .= "\n";
-
-      if ($i % 5 == 0)
+      elsif ($o1)
         {
-          $line =~ s/ /./go;
+          $txtmess = 'DIFF';
+          $colmess = 'red on_black';
+
+          push @line, "<$colmess>", $txtmess;
         }
 
-      print $line;
-
-      if ($args{'status-edit-diff'} && $o1 && $edit)
-        {
-          system ('vim', '-d', $o, $o1);
-        }
-
+      $printer->line (@line);
 
     }
 
@@ -1076,7 +1369,9 @@ sub getLastMitraillette
 
   (my $build = $args{build}) or die;
 
-  my @mitraillette = sort grep { -d && m/mitraille_\d\d\d\d$/o } <mitraille_????>;
+  my $path = $build->getPath ();
+
+  my @mitraillette = sort grep { -d && m/mitraille_\d\d\d\d$/o } <$path/mitraille_????>;
 
   return pop (@mitraillette);
 }
@@ -1085,13 +1380,15 @@ my $build = 'build'->new ();
 $build or die ("mitpack should be called either from a pack or from a cmake build");
 
 my %opts = (version => $build->getVersion (), filter => '', maxtime => 0);
-my @opts_f = qw (verbose help reuse dryrun status status-edit-diff cancel list only-completed);
-my @opts_s = qw (version reference filter maxtime);
+my @opts_f = qw (verbose help reuse dryrun status cancel list);
+my @opts_s = qw (version filter maxtime);
+my @opts_l = qw (reference);
+
 
 sub help
 {
   print "Usage: " . &basename ($0) . "\n" 
-      . " Options:\n" . join ('', map { "   --$_\n" } @opts_f, @opts_s);
+      . " Options:\n" . join ('', map { "   --$_\n" } @opts_f, @opts_s, @opts_l);
 }
 
 if (-f '.mitpack.conf')
@@ -1099,10 +1396,16 @@ if (-f '.mitpack.conf')
     unshift (@ARGV, @{ do './.mitpack.conf' });
   }
 
+if ($opts{reference})
+  {
+    $opts{reference} = [$opts{reference}];
+  }
+
 &GetOptions
 (
   (map { ($_, \$opts{$_}) } @opts_f),
   (map { ("$_=s", \$opts{$_}) } @opts_s),
+  (map { ("$_=s@", \$opts{$_}) } @opts_l),
 );
 
 if ($opts{help})
@@ -1117,8 +1420,14 @@ $opts{reuse} ||= $opts{status};
 $opts{reuse} ||= $opts{cancel};
 $opts{reuse} ||= $opts{list};
 
-$opts{reference} = 'File::Spec'->rel2abs ($opts{reference})
-  if ($opts{reference});
+if ($opts{reference})
+  {
+    for (@{ $opts{reference} })
+      {
+        $_ = 'File::Spec'->rel2abs ($_);
+      }
+    ($opts{reference1}, $opts{reference2}) = @{ $opts{reference} };
+  }
 
 $opts{filter} = [split (m/,/o, $opts{filter})];
 
