@@ -132,6 +132,7 @@ fi
 
 REF_JOBSDIR=$MIT_INSTALL_DIR/protojobs
 REF_NAMDIR=$MIT_INSTALL_DIR/namelist
+MONOHEADER=$REF_JOBSDIR/$HOST/monoheader
 MULTIHEADER=$REF_JOBSDIR/$HOST/multiheader
 JOBTRAILER=$REF_JOBSDIR/$HOST/jobtrailer
 eval WORKDIR=$(echo $(awk -F"=" "\$1==\"WORKDIR\" { print \$2;exit }" ${MIT_INSTALL_DIR}/protojobs/$HOST/config_${CYCLE}))
@@ -278,8 +279,11 @@ COMMENT=$3
   NBTHREADS=`echo $job_nthreads | awk '{printf("%d",$0)}'`
   NTASKS=$(( $NTASKS_TOT - $NPROC_IO ))                       # matches with namelist variable "NPROC"
   NTASKS_BY_NODE=$(( $NTASKS_TOT / $NBNODES ))                       # for the header job
+  HEADER_JOB=$MULTIHEADER                                 # default value
+  [ $NBNODES -eq 1 ] && HEADER_JOB=$MONOHEADER            # upgrade if only one node used
 
-  cat $MULTIHEADER > ${JOB_DIR}/${CODE_NAME}.cjob
+
+  cat $HEADER_JOB > ${JOB_DIR}/${CODE_NAME}.cjob
   echo "export STATION=$STATION" >> ${JOB_DIR}/${CODE_NAME}.cjob
   cat $REF_JOBSDIR/$HOST/config_${CYCLE} >> ${JOB_DIR}/${CODE_NAME}.cjob
   cat $JOB >> ${JOB_DIR}/${CODE_NAME}.cjob
@@ -357,7 +361,7 @@ sed  -e "s/__jobname__/endjob/" \
      -e "s/__job_walltime__/${job_walltime}/" -e "s/__job_cputime__/${job_cputime}/" \
      -e "s/__ntasks_tot__/${NBPROCS_END}/" \
      -e "s/__nb_nodes__/${NBNODES_END}/" -e "s/__ntasks_by_node__/${NTASKS_END}/" \
-     $MULTIHEADER > job_end.x${MITRA_PID}
+     $MONOHEADER > job_end.x${MITRA_PID}
 cat >> job_end.x${MITRA_PID} <<PEOF
 
 #waiting for last listing
